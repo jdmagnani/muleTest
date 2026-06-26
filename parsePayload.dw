@@ -1,19 +1,21 @@
 %dw 2.0
+import * from dw::Runtime
 output application/json
 
-// ---- header: vars and funs only, nothing executable yet ----
-
-fun trimLower(s) = if (s == null) null else (s as String) trim() lower
-fun trimOnly(s) = if (s == null) null else (s as String) trim()
+fun trimLower(s) = if (s == null) null else lower(trim(s as String))
+fun trimOnly(s) = if (s == null) null else trim(s as String)
 
 fun parseDob(d: Any) =
   if (d == null) null
   else
-    (try((d as String) as Date {format: "yyyy-MM-dd"})).success
-      then (d as String) as Date {format: "yyyy-MM-dd"}
-      else (try((d as String) as Date {format: "dd/MM/yyyy"})).success
-        then (d as String) as Date {format: "dd/MM/yyyy"}
-        else null
+    do {
+      var attempt1 = try(() -> (d as String) as Date {format: "yyyy-MM-dd"})
+      var attempt2 = try(() -> (d as String) as Date {format: "dd/MM/yyyy"})
+      ---
+      if (attempt1.success) attempt1.result
+      else if (attempt2.success) attempt2.result
+      else null
+    }
 
 fun ageFrom(dob: Date, today: Date) =
   if (dob == null) null
@@ -41,7 +43,6 @@ var validationErrors =
     if (dobRaw != null and parsedDob == null) "dateOfBirth could not be parsed" else null
   ] filter ($ != null)
 
-// ---- body: exactly one expression ----
 ---
 if (sizeOf(validationErrors) > 0)
   {
