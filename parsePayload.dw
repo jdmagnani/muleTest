@@ -1,0 +1,74 @@
+%dw 2.0
+output application/json
+
+// ---- header: vars and funs only, nothing executable yet ----
+
+fun trimLower(s) = if (s == null) null else (s as String) trim() lower
+fun trimOnly(s) = if (s == null) null else (s as String) trim()
+
+fun parseDob(d: Any) =
+  if (d == null) null
+  else
+    (try((d as String) as Date {format: "yyyy-MM-dd"})).success
+      then (d as String) as Date {format: "yyyy-MM-dd"}
+      else (try((d as String) as Date {format: "dd/MM/yyyy"})).success
+        then (d as String) as Date {format: "dd/MM/yyyy"}
+        else null
+
+fun ageFrom(dob: Date, today: Date) =
+  if (dob == null) null
+  else
+    today.year - dob.year - (if (today.month < dob.month or (today.month == dob.month and today.day < dob.day)) 1 else 0)
+
+var today = now() as Date
+
+var customerId = payload.id default payload.customerId default payload.externalId default null
+var externalId = payload.externalId default null
+var firstName = payload.name.first default payload.name.given default payload.firstName default null
+var lastName = payload.name.last default payload.name.family default payload.lastName default null
+var emailRaw = payload.email default payload.contact.email default null
+var dobRaw = payload.dob default payload.dateOfBirth default payload.birthDate default null
+var addressSrc = payload.address default payload.contact.address default null
+
+var parsedDob = parseDob(dobRaw)
+
+var validationErrors =
+  [
+    if (customerId == null) "customerId or externalId is required" else null,
+    if (firstName == null) "firstName is required" else null,
+    if (lastName == null) "lastName is required" else null,
+    if (emailRaw == null) "email is required" else null,
+    if (dobRaw != null and parsedDob == null) "dateOfBirth could not be parsed" else null
+  ] filter ($ != null)
+
+// ---- body: exactly one expression ----
+---
+if (sizeOf(validationErrors) > 0)
+  {
+    error: "Validation failed",
+    details: validationErrors
+  }
+else
+  {
+    customer: {
+      customerId: customerId,
+      externalId: externalId,
+      firstName: trimOnly(firstName),
+      lastName: trimOnly(lastName),
+      fullName: trim(trimOnly(firstName) ++ " " ++ trimOnly(lastName)),
+      email: trimLower(emailRaw),
+      dateOfBirth: parsedDob as String {format: "yyyy-MM-dd"},
+      age: ageFrom(parsedDob, today),
+      address: {
+        street: addressSrc.line1 default addressSrc.street default addressSrc.streetLine default null,
+        city: addressSrc.city default null,
+        state: addressSrc.state default addressSrc.region default null,
+        postalCode: addressSrc.postalCode default addressSrc.zip default null,
+        country: addressSrc.country default "US"
+      },
+      sourceMeta: {
+        sourceSystem: payload.sourceSystem default null,
+        receivedAt: now() as String {format: "yyyy-MM-dd'T'HH:mm:ss'Z'"}
+      }
+    }
+  }
